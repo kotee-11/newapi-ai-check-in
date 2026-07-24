@@ -1554,6 +1554,29 @@ class CheckIn:
         finally:
             session.close()
 
+    async def _dismiss_site_announcements(self, page) -> None:
+        """关闭登录页可能遮挡表单的系统公告。"""
+        try:
+            dismissed = await page.evaluate(
+                """() => {
+                    const dialog = document.querySelector('[role="dialog"]');
+                    if (!dialog) return false;
+                    const button = Array.from(dialog.querySelectorAll('button')).find((item) => {
+                        const text = (item.innerText || item.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        const label = (item.getAttribute('aria-label') || '').toLowerCase();
+                        return label === 'close' || text === 'close' || text.includes('关闭公告') || text.includes('今日关闭');
+                    });
+                    if (!button) return false;
+                    button.click();
+                    return true;
+                }"""
+            )
+            if dismissed:
+                print(f"ℹ️ {self.account_name}: Closed login-page announcement")
+                await page.wait_for_timeout(500)
+        except Exception as e:
+            print(f"⚠️ {self.account_name}: Failed to close login-page announcement: {e}")
+
     async def _click_site_password_login_switch(self, page) -> bool:
         """切换到站点账号密码登录表单，尽量使用稳定选择器和文本匹配。"""
         selectors = [
@@ -1785,6 +1808,7 @@ class CheckIn:
                 if self.provider_config.aliyun_captcha:
                     await aliyun_captcha_check(page, self.account_name)
 
+                await self._dismiss_site_announcements(page)
                 await self._click_site_password_login_switch(page)
 
                 if not await self._fill_site_login_form(page, username, password):
